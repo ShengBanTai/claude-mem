@@ -28,34 +28,44 @@ export function extractLastMessage(
   let foundMatchingRole = false;
 
   for (let i = lines.length - 1; i >= 0; i--) {
-    const line = JSON.parse(lines[i]);
-    if (line.type === role) {
-      foundMatchingRole = true;
+    try {
+      const line = JSON.parse(lines[i]);
+      if (line.type === role) {
+        foundMatchingRole = true;
 
-      if (line.message?.content) {
-        let text = '';
-        const msgContent = line.message.content;
+        if (line.message?.content) {
+          let text = '';
+          const msgContent = line.message.content;
 
-        if (typeof msgContent === 'string') {
-          text = msgContent;
-        } else if (Array.isArray(msgContent)) {
-          text = msgContent
-            .filter((c: any) => c.type === 'text')
-            .map((c: any) => c.text)
-            .join('\n');
-        } else {
-          // Unknown content format - throw error
-          throw new Error(`Unknown message content format in transcript. Type: ${typeof msgContent}`);
+          if (typeof msgContent === 'string') {
+            text = msgContent;
+          } else if (Array.isArray(msgContent)) {
+            text = msgContent
+              .filter((c: any) => c.type === 'text')
+              .map((c: any) => c.text)
+              .join('\n');
+          } else {
+            // Unknown content format - throw error
+            throw new Error(`Unknown message content format in transcript. Type: ${typeof msgContent}`);
+          }
+
+          if (stripSystemReminders) {
+            text = text.replace(SYSTEM_REMINDER_REGEX, '');
+            text = text.replace(/\n{3,}/g, '\n\n').trim();
+          }
+
+          // Return text even if empty - caller decides if that's an error
+          return text;
         }
-
-        if (stripSystemReminders) {
-          text = text.replace(SYSTEM_REMINDER_REGEX, '');
-          text = text.replace(/\n{3,}/g, '\n\n').trim();
-        }
-
-        // Return text even if empty - caller decides if that's an error
-        return text;
       }
+    } catch (parseErr) {
+      // Skip malformed JSON lines instead of crashing
+      if (parseErr instanceof SyntaxError) {
+        logger.debug('PARSER', `Skipping malformed JSON line in transcript: ${parseErr.message}`);
+        continue;
+      }
+      // Re-throw non-JSON parsing errors (like unknown content format)
+      throw parseErr;
     }
   }
 
